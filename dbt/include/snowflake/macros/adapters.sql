@@ -1,4 +1,4 @@
-{% macro get_column_comment_sql(column_name, column_dict) -%}
+{% macro get_column_comment_sql(column_name, column_dict, iceberg) -%}
   {% if (column_name|upper in column_dict) -%}
     {% set matched_column = column_name|upper -%}
   {% elif (column_name|lower in column_dict) -%}
@@ -8,7 +8,9 @@
   {% else -%}
     {% set matched_column = None -%}
   {% endif -%}
-  {% if matched_column -%}
+  {%- if matched_column AND iceberg -%}
+    column {{column_name}} COMMENT $${{ column_dict[matched_column]['description'] | replace('$', '[$]') }}$$
+  {% elif matched_column -%}
     {{ adapter.quote(column_name) }} COMMENT $${{ column_dict[matched_column]['description'] | replace('$', '[$]') }}$$
   {%- else -%}
     {{ adapter.quote(column_name) }} COMMENT $$$$
@@ -166,30 +168,46 @@
 
 {% macro snowflake__alter_column_type(relation, column_name, new_column_type) -%}
   {% call statement('alter_column_type') %}
+    {%- set iceberg = config.get('iceberg', default=true) -%}
+    {% if iceberg %}
+    alter iceberg table {{ relation }} alter {{ adapter.quote(column_name) }} set data type {{ new_column_type }};
+    {% else %}
     alter table {{ relation }} alter {{ adapter.quote(column_name) }} set data type {{ new_column_type }};
+    {% endif %}
   {% endcall %}
 {% endmacro %}
 
 {% macro snowflake__alter_relation_comment(relation, relation_comment) -%}
-    {%- if relation.is_dynamic_table -%}
+    {%- set iceberg = config.get('iceberg', default=true) -%}
+    {% if iceberg %}
+        {%- set relation_type = 'iceberg table' -%}
+    {%- elif relation.is_dynamic_table -%}
         {%- set relation_type = 'dynamic table' -%}
     {%- else -%}
         {%- set relation_type = relation.type -%}
     {%- endif -%}
-    comment on {{ relation_type }} {{ relation }} IS $${{ relation_comment | replace('$', '[$]') }}$$;
+    {% if iceberg %}
+        alter {{ relation_type }} {{relation}} SET COMMENT = $${{ relation_comment | replace('$', '[$]') }}$$;
+    {%- else %}
+        comment on {{ relation_type }} {{ relation }} IS $${{ relation_comment | replace('$', '[$]') }}$$;
+    {%- endif %}
+    
 {% endmacro %}
 
 
 {% macro snowflake__alter_column_comment(relation, column_dict) -%}
     {% set existing_columns = adapter.get_columns_in_relation(relation) | map(attribute="name") | list %}
-    {% if relation.is_dynamic_table -%}
+    {%- set iceberg = config.get('iceberg', default=true) -%}
+    {% if iceberg %}
+        {% set relation_type = "iceberg table" %}
+    {% elif relation.is_dynamic_table -%}
         {% set relation_type = "table" %}
     {% else -%}
         {% set relation_type = relation.type %}
     {% endif %}
     alter {{ relation_type }} {{ relation }} alter
     {% for column_name in existing_columns if (column_name in existing_columns) or (column_name|lower in existing_columns) %}
-        {{ get_column_comment_sql(column_name, column_dict) }} {{- ',' if not loop.last else ';' }}
+        {{ get_column_comment_sql(column_name, column_dict, iceberg) }} {{- ',' if not loop.last else ';' }}
     {% endfor %}
 {% endmacro %}
 
