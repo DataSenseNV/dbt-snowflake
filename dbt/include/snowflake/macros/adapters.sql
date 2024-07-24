@@ -170,6 +170,7 @@
   {% call statement('alter_column_type') %}
     {%- set iceberg = config.get('iceberg', default=true) -%}
     {% if iceberg %}
+    {{ log('XXX: am I iceberg?', info=True) }}
     alter iceberg table {{ relation }} alter {{ adapter.quote(column_name) }} set data type {{ new_column_type }};
     {% else %}
     alter table {{ relation }} alter {{ adapter.quote(column_name) }} set data type {{ new_column_type }};
