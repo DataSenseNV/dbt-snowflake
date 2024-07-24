@@ -8,7 +8,7 @@
   {% else -%}
     {% set matched_column = None -%}
   {% endif -%}
-  {%- if matched_column AND iceberg -%}
+  {%- if matched_column and iceberg -%}
     column {{column_name}} COMMENT $${{ column_dict[matched_column]['description'] | replace('$', '[$]') }}$$
   {% elif matched_column -%}
     {{ adapter.quote(column_name) }} COMMENT $${{ column_dict[matched_column]['description'] | replace('$', '[$]') }}$$
